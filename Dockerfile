@@ -24,6 +24,48 @@ RUN apt-get update -qq && \
         curl \
         python3 \
         python3-tk \
+        python3-dev \
+        libpython3.6 \
+        libssl1.1 \
+        libssl-dev \
+        libffi6 \
+        libffi-dev \
+        libglib2.0-0 \
+        libgobject-2.0-0 \
+        libgio-2.0-0 \
+        libgmodule-2.0-0 \
+        libpcre3 \
+        libgtk2.0-0 \
+        libgdk-pixbuf2.0-0 \
+        libcairo2 \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libpangoft2-1.0-0 \
+        libatk1.0-0 \
+        libx11-6 \
+        libxfixes3 \
+        libxi6 \
+        libxrandr2 \
+        libxcursor1 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxinerama1 \
+        libice6 \
+        libgl1-mesa-glx \
+        libegl1-mesa \
+        libpng16-16 \
+        libreadline8 \
+        libncurses5 \
+        libtinfo5 \
+        libgraphite2-3 \
+        libthai0 \
+        libfribidi0 \
+        libharfbuzz0b \
+        libpixman-1-0 \
+        libxcb-shm0 \
+        libxcb-render0 \
+        libjbig0 \
+        libjpeg62-turbo \
         tini && \
     rm -rf /var/lib/apt/lists/* && \
     ln -s /usr/bin/python3 /usr/bin/python

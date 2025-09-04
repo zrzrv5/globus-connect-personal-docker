@@ -28,9 +28,23 @@ echo "Config Directory: $CONFIG_DIR"
 echo "Data Directory: $DATA_DIR"
 echo
 
-# Create directories
+# Create directories with correct permissions
 mkdir -p "$CONFIG_DIR"
 mkdir -p "$DATA_DIR"
+
+# Fix permissions for the container user (UID 10001)
+echo "Setting up directory permissions..."
+if command -v sudo >/dev/null 2>&1; then
+    sudo chown -R 10001:10001 "$CONFIG_DIR" 2>/dev/null || {
+        echo "Note: Could not set ownership with sudo. You may need to run:"
+        echo "  sudo chown -R 10001:10001 $CONFIG_DIR"
+        echo "  sudo chown -R 10001:10001 $DATA_DIR"
+    }
+    sudo chown -R 10001:10001 "$DATA_DIR" 2>/dev/null || true
+else
+    # If no sudo, at least make directories writable
+    chmod 755 "$CONFIG_DIR" "$DATA_DIR" 2>/dev/null || true
+fi
 
 echo "=== Step 1: Interactive Setup ==="
 echo "The setup will display an auth URL. You need to:"
@@ -40,10 +54,17 @@ echo "3. Copy the auth code back here"
 echo
 read -p "Press Enter to start setup..."
 
+# Check if we can run docker without sudo
+DOCKER_CMD="docker"
+if ! docker ps >/dev/null 2>&1; then
+    echo "Note: Using sudo for Docker commands (add user to docker group to avoid this)"
+    DOCKER_CMD="sudo docker"
+fi
+
 # Run interactive setup
-docker run -it --rm \
+$DOCKER_CMD run -it --rm \
     -v "$CONFIG_DIR:/home/gcp/.globusonline" \
-    globus-gcp:latest \
+    ghcr.io/zrzrv5/globus-connect-personal-docker:latest \
     gcp -setup --name "$ENDPOINT_NAME" --description "$DESCRIPTION" --owner "$OWNER_EMAIL"
 
 if [ $? -eq 0 ]; then
@@ -51,18 +72,18 @@ if [ $? -eq 0 ]; then
     echo "=== Step 2: Starting GCP Service ==="
     
     # Start the service with data directory access
-    docker run -d --name globus-gcp \
+    $DOCKER_CMD run -d --name globus-gcp \
         --restart unless-stopped \
         -v "$CONFIG_DIR:/home/gcp/.globusonline" \
         -v "$DATA_DIR:/data" \
-        globus-gcp:latest \
+        ghcr.io/zrzrv5/globus-connect-personal-docker:latest \
         gcp -start -restrict-paths "rw/data"
         
     echo "Waiting for service to start..."
     sleep 3
     
     # Check status
-    docker exec globus-gcp gcp -status
+    $DOCKER_CMD exec globus-gcp gcp -status
     
     echo
     echo "=== Setup Complete! ==="
@@ -73,11 +94,11 @@ if [ $? -eq 0 ]; then
     echo "Config directory: $CONFIG_DIR"
     echo
     echo "To manage the service:"
-    echo "  docker logs globus-gcp         # View logs"
-    echo "  docker exec globus-gcp gcp -status  # Check status"
-    echo "  docker stop globus-gcp        # Stop service"
-    echo "  docker start globus-gcp       # Start service"
-    echo "  docker restart globus-gcp     # Restart service"
+    echo "  $DOCKER_CMD logs globus-gcp         # View logs"
+    echo "  $DOCKER_CMD exec globus-gcp gcp -status  # Check status"
+    echo "  $DOCKER_CMD stop globus-gcp        # Stop service"
+    echo "  $DOCKER_CMD start globus-gcp       # Start service"
+    echo "  $DOCKER_CMD restart globus-gcp     # Restart service"
 else
     echo "Setup failed. Check the error messages above."
     exit 1

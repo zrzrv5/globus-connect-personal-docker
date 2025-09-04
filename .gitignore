@@ -1,0 +1,13 @@
+# Test directories
+test-globus/
+
+# Docker build cache
+.dockerignore
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log

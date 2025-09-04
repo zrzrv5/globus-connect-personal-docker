@@ -43,6 +43,9 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          labels: |
+            org.opencontainers.image.description=Globus Connect Personal Docker container for NAS devices
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -59,5 +62,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GCP_UID=1000
+            GCP_GID=100
           cache-from: type=gha
           cache-to: type=gha,mode=max

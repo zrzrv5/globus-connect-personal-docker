@@ -1,156 +1,135 @@
 # Globus Connect Personal Docker Container
 
-A minimal, headless Docker container for running Globus Connect Personal (GCP) on your NAS or any Linux system.
+A lightweight Docker container for running Globus Connect Personal on NAS devices and Linux systems.
 
-## Quick Start
+This is my personal setup for running Globus Connect Personal on my UGREEN NAS using Docker. I created this after struggling with the official Globus documentation and wanting a simple, containerized solution that works reliably on ARM64/AMD64 NAS devices. The container is designed to be lightweight, secure, and easy to manage.
 
-### 1. Build the Image
+**My Setup:** UGREEN DXP4800 Plus NAS running Docker, but this should work on any system with Docker support (Synology, QNAP, etc.).
 
+I followed the original tutorial from here: https://gitlab.kuleuven.be/setit/rdm/globus-connect#globus-connect-personal-on-docker
+
+## Prerequisites
+
+### 0. Pre-setup Requirements
+
+1. **Non-root Docker access**
+   ```bash
+   # Add your user to docker group
+   sudo usermod -aG docker $USER
+   
+   # Log out and back in, or run:
+   newgrp docker
+   
+   # Verify docker works without sudo
+   docker ps
+   ```
+
+2. **Create configuration directory**
+   ```bash
+   mkdir configs
+   chmod 700 configs
+   ```
+
+3. **Globus Account**
+   - Sign up at [globus.org](https://globus.org) if you don't have an account
+
+## Installation
+
+### 1. Build the Docker Image
+
+Match your user's UID/GID for proper file permissions:
 ```bash
-docker build -t globus-gcp:latest .
+docker build --build-arg GCP_UID=$(id -u) --build-arg GCP_GID=$(id -g) -t gcp-docker .
 ```
 
-### 2. Initial Setup
+### 2. Initial Setup (One-time)
 
-Create a config directory on your host and run the interactive setup:
-
-```bash
-# Create persistent config directory
-mkdir -p ~/globus-config
-
-# Run interactive setup (replace with your details)
-docker run -it --rm \
-  -v ~/globus-config:/home/gcp/.globusonline \
-  ghcr.io/zrzrv5/globus-connect-personal-docker:latest \
-  gcp -setup --name "My NAS Endpoint" --description "NAS data transfer" --owner your-email@domain.com
-```
-
-The setup process will:
-1. Display an auth URL - copy this to your browser
-2. Log in with your Globus account 
-3. Copy the auth code from the browser
-4. Paste it back into the terminal to complete setup
-
-### 3. Start GCP Service
-
-After setup, start the service with restricted paths:
+Run the container interactively to configure Globus Connect Personal:
 
 ```bash
-# Start with access to a specific data directory
-mkdir -p ~/globus-data
-
-docker run -d --name globus-gcp \
-  -v ~/globus-config:/home/gcp/.globusonline \
-  -v ~/globus-data:/data \
-  ghcr.io/zrzrv5/globus-connect-personal-docker:latest \
-  gcp -start -restrict-paths rw/data
+docker run -it \
+  --platform linux/amd64 \
+  -v ./configs:/home/globus/.globusonline \
+  gcp-docker bash
 ```
 
-### 4. Check Status
-
+Inside the container, run the setup command:
 ```bash
-# Check if GCP is running
-docker exec globus-gcp gcp -status
-
-# View logs
-docker logs globus-gcp
+globusconnectpersonal -setup -n 'YourNASName' --description 'My NAS Description' --owner your-email@example.com
 ```
 
-## Docker Compose Deployment (Recommended)
 
-The easiest way to deploy on your NAS using Docker Compose:
+The setup will:
+1. Display a login URL - open it in your browser
+2. Ask you to paste back an authorization code
+3. Show "registered new endpoint, id: xxx setup completed successfully"
+4. Exit the container with `exit`
 
-### 1. Setup
+### 3. Run Globus Connect Personal
+
+**Start the service in detached mode:**
 ```bash
-# Download the compose files
-curl -O https://raw.githubusercontent.com/zrzrv5/globus-connect-personal-docker/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/zrzrv5/globus-connect-personal-docker/main/docker-compose.setup.yml
-curl -O https://raw.githubusercontent.com/zrzrv5/globus-connect-personal-docker/main/env.example
-
-# Create environment file
-cp env.example .env
-# Edit .env with your details
+docker run -d --rm --name globus-service \
+  -v ./configs:/home/globus/.globusonline \
+  -v /volume1/work:/data \
+  gcp-docker start
 ```
 
-### 2. Initial Setup
+**Adjust the data path for your system:**
+
+
+## Management
+
+### Check if running
 ```bash
-# Set your details
-export ENDPOINT_NAME="MyNAS-Endpoint"
-export DESCRIPTION="Home NAS storage"
-export OWNER_EMAIL="user@example.com"
-
-# Run interactive setup
-docker compose -f docker-compose.setup.yml up
+docker ps
 ```
 
-### 3. Start Service
+### View logs
 ```bash
-# Start the GCP service
-docker compose up -d
-
-# Check status
-docker compose exec globus-gcp gcp -status
+docker logs globus-service
+docker logs -f globus-service  # Follow logs in real-time
 ```
 
-## Manual NAS Deployment
-
-For deployment without Docker Compose:
-
-1. Pull the image: `docker pull ghcr.io/zrzrv5/globus-connect-personal-docker:latest`
-2. Run setup and service as shown in Quick Start section above
-
-Example NAS run command:
+### Stop the service
 ```bash
-docker run -d --name globus-gcp \
-  --restart unless-stopped \
-  -v /volume1/globus-config:/home/gcp/.globusonline \
-  -v /volume1/data:/data \
-  ghcr.io/zrzrv5/globus-connect-personal-docker:latest \
-  gcp -start -restrict-paths rw/data
+docker stop globus-service
+# Container auto-removes due to --rm flag
 ```
 
-## Useful Commands
-
+### Restart the service
 ```bash
-# View GCP help
-docker run --rm ghcr.io/zrzrv5/globus-connect-personal-docker:latest gcp -help
-
-# Stop the service
-docker exec globus-gcp gcp -stop
-
-# Get detailed status
-docker exec globus-gcp gcp -trace
-
-# Restart container
-docker restart globus-gcp
+# Same command as step 3
+docker run -d --rm --name globus-service \
+  -v ./configs:/home/globus/.globusonline \
+  -v /volume1/work:/data \
+  gcp-docker start
 ```
 
-## Security Notes
+### Clean up old containers
+```bash
+# Remove all stopped containers
+docker container prune -f
 
-- The container runs as a non-root user (`gcp`, UID 10001)
-- Use `-restrict-paths` to limit filesystem access
-- Keep your `~/.globusonline` config directory secure and backed up
-- Consider firewall rules for your NAS if needed
+# Or remove specific containers
+docker rm -f $(docker ps -aq --filter ancestor=gcp-docker)
+```
 
 ## Troubleshooting
 
-### Permission Issues
-- **"Permission denied: '/home/gcp/.globusonline/lta'"**: Fix directory ownership:
-  ```bash
-  sudo chown -R 10001:10001 /path/to/your/config/directory
-  sudo chown -R 10001:10001 /path/to/your/data/directory
-  ```
+### Debug mode
+If you're having issues, run in debug mode:
+```bash
+docker run -it \
+  -v ./configs:/home/globus/.globusonline \
+  -v /volume1/work:/data \
+  gcp-docker debug
+```
 
-### Common Issues
-- **"No configuration found"**: Ensure you've run `-setup` and the config volume is mounted
-- **"Permission denied"**: Check volume mount permissions and path restrictions  
-- **Connection issues**: Verify network connectivity and firewall settings
-
-### Docker Compose Permission Fix
-If using Docker Compose, add this to your service definition:
-```yaml
-services:
-  globus-gcp:
-    # ... other settings ...
-    user: "10001:10001"  # Match container user
+### Interactive shell for debugging
+```bash
+docker run -it \
+  -v ./configs:/home/globus/.globusonline \
+  -v /volume1/work:/data \
+  gcp-docker bash
 ```

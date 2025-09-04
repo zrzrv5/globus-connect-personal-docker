@@ -1,111 +1,40 @@
-FROM ubuntu:22.04
+FROM python:3.11-slim-bullseye
+# Modified from Ronny Moreas's script
 
-# Metadata
-LABEL maintainer="Rui Zhou <ruizhou@iastate.edu>" \
-      description="Minimal headless Globus Connect Personal container"
 
-# -----------------------------------------------------------------------------
-# Arguments and environment
-# -----------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y \
+    curl \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+RUN pip3 install --no-cache-dir globus-cli
+
 ARG TARGETARCH
-ARG GCP_URL_AMD64=https://downloads.globus.org/globus-connect-personal/linux/stable/globusconnectpersonal-latest.tgz
-ARG GCP_URL_ARM64=https://downloads.globus.org/globus-connect-personal/linux_aarch64/stable/globusconnectpersonal-aarch64-latest.tgz
-ARG USERNAME=gcp
-ARG UID=10001
+ARG GCP_VERSION=3.2.7
 
-ENV HOME=/home/${USERNAME}
-
-# -----------------------------------------------------------------------------
-# Install minimal runtime dependencies
-# -----------------------------------------------------------------------------
-RUN apt-get update -qq && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        python3 \
-        python3-tk \
-        python3-dev \
-        libpython3.6 \
-        libssl1.1 \
-        libssl-dev \
-        libffi6 \
-        libffi-dev \
-        libglib2.0-0 \
-        libgobject-2.0-0 \
-        libgio-2.0-0 \
-        libgmodule-2.0-0 \
-        libpcre3 \
-        libgtk2.0-0 \
-        libgdk-pixbuf2.0-0 \
-        libcairo2 \
-        libpango-1.0-0 \
-        libpangocairo-1.0-0 \
-        libpangoft2-1.0-0 \
-        libatk1.0-0 \
-        libx11-6 \
-        libxfixes3 \
-        libxi6 \
-        libxrandr2 \
-        libxcursor1 \
-        libxcomposite1 \
-        libxdamage1 \
-        libxinerama1 \
-        libice6 \
-        libgl1-mesa-glx \
-        libegl1-mesa \
-        libpng16-16 \
-        libreadline8 \
-        libncurses5 \
-        libtinfo5 \
-        libgraphite2-3 \
-        libthai0 \
-        libfribidi0 \
-        libharfbuzz0b \
-        libpixman-1-0 \
-        libxcb-shm0 \
-        libxcb-render0 \
-        libjbig0 \
-        libjpeg62-turbo \
-        tini && \
-    rm -rf /var/lib/apt/lists/* && \
-    ln -s /usr/bin/python3 /usr/bin/python
-
-# -----------------------------------------------------------------------------
-# Add dedicated non-root user
-# -----------------------------------------------------------------------------
-RUN useradd -m -u ${UID} -s /bin/bash ${USERNAME}
-
-# -----------------------------------------------------------------------------
-# Download and unpack Globus Connect Personal
-# -----------------------------------------------------------------------------
-WORKDIR /opt
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        GCP_URL=${GCP_URL_ARM64}; \
-        GCP_TARBALL=globusconnectpersonal-aarch64-latest.tgz; \
+        GCP_URL="https://downloads.globus.org/globus-connect-personal/v3/linux_aarch64/stable/globusconnectpersonal-aarch64-${GCP_VERSION}.tgz"; \
     else \
-        GCP_URL=${GCP_URL_AMD64}; \
-        GCP_TARBALL=globusconnectpersonal-latest.tgz; \
+        GCP_URL="https://downloads.globus.org/globus-connect-personal/v3/linux/stable/globusconnectpersonal-${GCP_VERSION}.tgz"; \
     fi && \
-    curl -fsSL ${GCP_URL} -o ${GCP_TARBALL} && \
-    tar xzf ${GCP_TARBALL} && \
-    rm ${GCP_TARBALL} && \
-    mv globusconnectpersonal-* globusconnectpersonal && \
-    ln -s /opt/globusconnectpersonal/globusconnectpersonal /usr/local/bin/gcp
+    curl -s "${GCP_URL}" | (tar xzf - -C /opt/ && mv /opt/globusconnectpersonal-* /opt/gcp)
 
-# -----------------------------------------------------------------------------
-# Copy entrypoint script
-# -----------------------------------------------------------------------------
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+COPY entrypoint.sh /opt/gcp
 
-# -----------------------------------------------------------------------------
-# Switch to unprivileged user
-# -----------------------------------------------------------------------------
-USER ${USERNAME}
-WORKDIR ${HOME}
+ARG GCP_UID=1000
+ARG GCP_GID=100
+ARG GCP_HOME=/home/globus
 
-# -----------------------------------------------------------------------------
-# Default command
-# -----------------------------------------------------------------------------
-ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
-CMD ["gcp", "-help"]
+ENV GCP_UID=${GCP_UID}
+ENV GCP_GID=${GCP_GID}
+ENV GCP_CONFIG_PATH=${GCP_HOME}/.globusonline
+ENV GCP_RESTRICT_PATHS=rw/data
+ENV GCP_SHARED_PATHS=rw/data
+
+RUN adduser --uid $GCP_UID --gid $GCP_GID --disabled-password --gecos "Globus" --home ${GCP_HOME} globus
+ENV PATH="/opt/gcp/:$PATH"
+
+USER ${GCP_UID}
+WORKDIR ${GCP_HOME}
+
+ENTRYPOINT ["/opt/gcp/entrypoint.sh"]
+CMD [ "start" ]
